@@ -18,10 +18,10 @@ __all__ = ['enhance_peaks',
            'hampel_correcter',
            'make_windows',
            'plotter',
-           'preprocess_ecg', 
+           'preprocess_pcg', 
            'process',
            'process_segmentwise', 
-           'raw_to_ecg',
+           'raw_to_pcg',
            'scale_data',
            'scale_sections',
            'filtersignal']
@@ -37,18 +37,18 @@ def get_data(pcg, delim=',', column_name='None', encoding=None):
 
 # Preprocessing
 def preprocess_pcg(data, sample_rate):
-    '''preprocesses PCG data.
+    '''preprocesses PCG data
     '''
     preprocessed = scale_sections(data, sample_rate, windowsize=2.5)
     preprocessed = filtersignal(preprocessed, cutoff=0.5, sample_rate=sample_rate,
                                    order=4, filtertype='highpass')
-    #set signal mean to zero, clip out negative values
+    # Set signal mean to zero, clip out negative values
     mn = np.mean(preprocessed)
     preprocessed = np.clip(preprocessed - mn, a_min=0, a_max=None)
-    #second linear scaling
+    # Second linear scaling
     preprocessed = scale_sections(preprocessed, sample_rate, 5) 
 
-    #polyphase filtering. Note this doubles the samplerate!
+    # Polyphase filtering. Note this doubles the sample rate.
     preprocessed = resample_poly(preprocessed, len(preprocessed)*4,
                                  len(preprocessed)*2)
     preprocessed = enhance_peaks(preprocessed, iterations=2)
@@ -109,12 +109,11 @@ def enhance_peaks(hrdata, iterations=2):
     return hrdata    
 
 def mark_clipping(hrdata, threshold):
-    '''function that marks start and end of clipping part
-    it detects the start and end of clipping segments and returns them
+    '''Function that marks start and end of clipping part - it detects the start and end of clipping segments and returns them
     
-    keyword arguments:
-    - data: 1d list or numpy array containing heart rate data
-    - threshold: the threshold for clipping, recommended to
+    Keyword arguments:
+    - Data: 1D list or numpy array containing heart rate data
+    - Threshold: the threshold for clipping, recommended to
                  be a few data points below ADC or sensor max value, 
                  to compensate for signal noise (default 1020)
     
@@ -180,8 +179,8 @@ def interpolate_peaks(hrdata, sample_rate, threshold=1020):
        
     return hrdata
 
-def raw_to_ecg(hrdata, enhancepeaks=False):
-    '''Flips raw signal with negative mV peaks to normal ECG
+def raw_to_pcg(hrdata, enhancepeaks=False):
+    '''Flips raw signal with negative mV peaks to normal PCG
     Keyword arguments:
     hrdata -- numpy array or list containing raw heart rate data
     enhancepeaks -- boolean, whether to apply peak accentuation (default False)
