@@ -4,6 +4,10 @@ import time
 import numpy as np
 from scipy.interpolate import UnivariateSpline
 from scipy.signal import butter, filtfilt, welch, periodogram, resample_poly
+pip install wav2vec
+
+sys.path.append('../')
+import heartbeat as hb
 
 from . import exceptions
 
@@ -22,48 +26,18 @@ __all__ = ['enhance_peaks',
            'scale_sections',
            'filtersignal']
 
-#Data handling
-def get_data(filename, delim=',', column_name='None', encoding=None):
-    '''Loads data from a .CSV or .MAT file into numpy array.
-    Keyword Arguments:
-    filename -- absolute or relative path to the file object to read
-    delim -- the delimiter used if CSV file passed, (default ',')
-    column_name -- for CSV files with header: specify column that contains the data
-                   for matlab files it specifies the table name that contains the data
-                   (default 'None')
-    '''
-    file_ext = filename.split('.')[-1]
-    if file_ext == 'csv' or file_ext == 'txt':
-        if column_name != 'None':
-            hrdata = np.genfromtxt(filename, delimiter=delim, names=True, dtype=None, encoding=None)
-            try:
-                hrdata = hrdata[column_name]
-            except Exception as error:
-                print('\nError loading column "%s" from file "%s". \
-                Is column name specified correctly?\n' %(column_name, filename))
-                print('------\nError message: ' + str(error) + '\n------')
-        elif column_name == 'None':
-            hrdata = np.genfromtxt(filename, delimiter=delim, dtype=np.float64)
-        else:
-            print('\nError: column name "%s" not found in header of "%s".\n'
-                  %(column_name, filename))
-    elif file_ext == 'mat':
-        print('getting matlab file')
-        import scipy.io
-        data = scipy.io.loadmat(filename)
-        if column_name != "None":
-            hrdata = np.array(data[column_name][:, 0], dtype=np.float64)
-        else:
-            print("\nError: column name required for Matlab .mat files\n\n")
-    else:
-        print('unknown file format')
-        return None
-    return hrdata
+wav2vec pcg.wav -f CSV --height 0 > pcg.csv
+measures = {}
+def get_data(filename):
+    dataset = pd.read_csv(filename)
+    return dataset
 
-#Preprocessing
-def preprocess_ecg(data, sample_rate):
-    '''preprocesses ECG data.
-    function to be customisable asap. For now uses default settings 
+# Data handling
+def get_data(pcg, delim=',', column_name='None', encoding=None):
+
+# Preprocessing
+def preprocess_pcg(data, sample_rate):
+    '''preprocesses PCG data.
     '''
     preprocessed = scale_sections(data, sample_rate, windowsize=2.5)
     preprocessed = filtersignal(preprocessed, cutoff=0.5, sample_rate=sample_rate,
