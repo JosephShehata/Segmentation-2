@@ -67,10 +67,9 @@ def scale_data(data):
     return data
 
 def scale_sections(data, sample_rate, windowsize=2.5):
-    '''scales the data locally within the given window size.
-    Use prior to lowpass filtering for best results on 
-    signal where noise creates a variable ampliture.
-    keyword arguments:
+    '''Scales the data locally within the given window size.
+    Use prior to lowpass filtering for best results on signal where noise creates a variable amplitude.
+    Keyword arguments:
     data -- numpy array or list to be scales
     sample_rate -- sample rate of the signal
     windowsize -- size of the window within which signal is scaled, in seconds (default 2.5s)
@@ -96,7 +95,7 @@ def scale_sections(data, sample_rate, windowsize=2.5):
 
 def enhance_peaks(hrdata, iterations=2):
     '''Attempts to enhance the signal-noise ratio by accentuating the highest peaks
-    note: denoise first
+    Note: denoise first
     
     Keyword arguments:
     hrdata -- numpy array or list containing heart rate data
@@ -112,8 +111,8 @@ def mark_clipping(hrdata, threshold):
     '''Function that marks start and end of clipping part - it detects the start and end of clipping segments and returns them
     
     Keyword arguments:
-    - Data: 1D list or numpy array containing heart rate data
-    - Threshold: the threshold for clipping, recommended to
+    - hrdata: 1D list or numpy array containing heart rate data
+    - threshold: the threshold for clipping, recommended to
                  be a few data points below ADC or sensor max value, 
                  to compensate for signal noise (default 1020)
     
@@ -138,17 +137,15 @@ def mark_clipping(hrdata, threshold):
     return clipping_segments
 
 def interpolate_peaks(hrdata, sample_rate, threshold=1020):
-    '''function that interpolates peaks between
-    the clipping segments using cubic spline interpolation.
+    ''' Function that interpolates peaks between the clipping segments using cubic spline interpolation.
     
     It takes the clipping start +/- 100ms to calculate the spline.
     
-    Returns full data array with interpolated segments patched in
+    Returns full data array with interpolated segments patched in.
     
     keyword arguments:
-    data - 1d list or numpy array containing heart rate data
-    clipping_segments - list containing tuples of start- and 
-                        end-points of clipping segments.
+    data - 1D list or numpy array containing heart rate data
+    clipping_segments - list containing tuples of start- and end-points of clipping segments.
     '''
     clipping_segments = mark_clipping(hrdata, threshold)
     num_datapoints = int(0.1 * sample_rate)
@@ -157,8 +154,8 @@ def interpolate_peaks(hrdata, sample_rate, threshold=1020):
     
     for segment in clipping_segments:
         if segment[0] < num_datapoints: 
-            #if clipping is present at start of signal, skip.
-            #We cannot interpolate accurately when there is insufficient data prior to clipping segment.
+            # If clipping is present at start of signal, skip.
+            # Can not interpolate accurately when there is insufficient data prior to clipping segment.
             pass
         else: 
             antecedent = hrdata[segment[0] - num_datapoints : segment[0]]
@@ -180,7 +177,7 @@ def interpolate_peaks(hrdata, sample_rate, threshold=1020):
     return hrdata
 
 def raw_to_pcg(hrdata, enhancepeaks=False):
-    '''Flips raw signal with negative mV peaks to normal PCG
+    '''Flips raw signal with negative peaks to normal PCG
     Keyword arguments:
     hrdata -- numpy array or list containing raw heart rate data
     enhancepeaks -- boolean, whether to apply peak accentuation (default False)
@@ -204,9 +201,9 @@ def get_samplerate_datetime(datetimedata, timeformat='%H:%M:%S.%f'):
     Keyword arguments:
     timerdata -- array containing values of a timer, datetime strings
     timeformat -- the format of the datetime-strings in datetimedata
-    default('%H:%M:%S.f', 24-hour based time including ms: 21:43:12.569)
+    default('%H:%M:%S.f', 24-hour-based time including ms: 21:43:12.569)
     '''
-    datetimedata = np.asarray(datetimedata, dtype='str') #cast as str in case of np.bytes type
+    datetimedata = np.asarray(datetimedata, dtype='str') # Cast as str in case of np.bytes type
     elapsed = ((datetime.strptime(datetimedata[-1], timeformat) -
                 datetime.strptime(datetimedata[0], timeformat)).total_seconds())
     sample_rate = (len(datetimedata) / elapsed)
@@ -215,7 +212,7 @@ def get_samplerate_datetime(datetimedata, timeformat='%H:%M:%S.%f'):
 def rollwindow(data, windowsize):
     '''Returns rolling window of size 'window' over dataset 'data'.
     Keyword arguments:
-    data -- 1-dimensional numpy array
+    data -- 1D-dimensional numpy array
     window -- window size
     '''
     shape = data.shape[:-1] + (data.shape[-1] - windowsize + 1, windowsize)
@@ -225,7 +222,7 @@ def rollwindow(data, windowsize):
 def rolmean(data, windowsize, sample_rate):
     '''Calculates the rolling mean over passed data.
     Keyword arguments:
-    data -- 1-dimensional numpy array or list
+    data -- 1D numpy array or list
     windowsize -- the window size to use, in seconds (calculated as windowsize * sample_rate)
     sample_rate -- the sample rate of the data set
     '''
@@ -272,7 +269,7 @@ def butter_bandpass(lowcut, highcut, fs, order=5):
 def filtersignal(data, cutoff, sample_rate, order, filtertype='lowpass'):
     '''Applies the Butterworth lowpass filter
     Keyword arguments:
-    data -- 1-dimensional numpy array or list containing the to be filtered data
+    data -- 1D numpy array or list containing the to be filtered data
     cutoff -- the cutoff frequency of the filter. Expects float for low and high types
               for bandpass filter expects list or array [low, high]
     sample_rate -- the sample rate of the data set
@@ -288,30 +285,27 @@ def filtersignal(data, cutoff, sample_rate, order, filtertype='lowpass'):
     return filtered_data
 
 def MAD(data):
-    '''function to compute median absolute deviation of data slice
+    '''Function to compute median absolute deviation of data slice.
        https://en.wikipedia.org/wiki/Median_absolute_deviation
     
-    keyword arguments:
-    - data: 1-dimensional numpy array containing data
+    Keyword arguments:
+    - data: 1D numpy array containing data
     '''
     med = np.median(data)
     return np.median(np.abs(data - med))
 
 def hampelfilt(data, filtsize=6):
-    '''function to detect outliers based on hampel filter
-       filter takes datapoint and six surrounding samples.
-       Detect outliers based on being more than 3std from window mean
+    '''Function to detect outliers based on hampel filter
+       Filter takes datapoint and six surrounding samples.
+       Detect outliers based on being more than 3 St.D. from window mean.
     
-    keyword arguments:
-    - data: 1-dimensional numpy array containing data
-    - filtsize: the filter size expressed the number of datapoints
-                taken surrounding the analysed datapoint. a filtsize
-                of 6 means three datapoints on each side are taken.
-                total filtersize is thus filtsize + 1 (datapoint evaluated)
+    Keyword arguments:
+    - data: 1D numpy array containing data
+    - filtsize: the filter size expresses the number of datapoints taken surrounding the analysed datapoint. A filtsiz of 6 means three datapoints on each side are taken. Total filtersize is thus filtsize + 1 (datapoint evaluated)
     '''
-    output = [x for x in data] #generate second list to prevent overwriting first
+    output = [x for x in data] # Generate second list to prevent overwriting first.
     onesided_filt = filtsize // 2
-    #madarray = [0 for x in range(0, onesided_filt)]
+    # madarray = [0 for x in range(0, onesided_filt)]
     for i in range(onesided_filt, len(data) - onesided_filt - 1):
         dataslice = output[i - onesided_filt : i + onesided_filt]
         mad = MAD(dataslice)
@@ -327,9 +321,9 @@ def hampel_correcter(data, sample_rate, filtsize=6):
     return data - hampelfilt(data, filtsize=int(sample_rate))
 
 def outliers_iqr_method(hrvalues):
-    '''function that removes outliers based on the interquartile range method
-    see: https://en.wikipedia.org/wiki/Interquartile_range
-    keyword arguments:
+    '''Function that removes outliers based on the interquartile range method
+    See: https://en.wikipedia.org/wiki/Interquartile_range
+    Keyword arguments:
     hrvalues -- list of computed hr or hrv values, from which outliers need to be identified
     returns cleaned list, with outliers substituted for the median
     '''
@@ -347,11 +341,10 @@ def outliers_iqr_method(hrvalues):
     return output
 
 def outliers_modified_z(hrvalues):
-    '''function that removes outliers based on the modified Z-score metric
-    keyword arguments:
-    - hrvalues: list of computed hr or hrv values, from which outliers 
-                need to be identified
-    returns cleaned list, with outliers substituted for the median
+    '''Function that removes outliers based on the modified Z-score metric.
+    Keyword arguments:
+    - hrvalues: list of computed hr or hrv values, from which outliers need to be identified
+    Returns cleaned list, with outliers substituted for the median.
     '''
     hrvalues = np.array(hrvalues)
     threshold = 3.5
@@ -367,17 +360,15 @@ def outliers_modified_z(hrvalues):
     return output
 
 def make_windows(data, sample_rate, windowsize=120, overlap=0, min_size=20):
-    '''function that slices data into windows for concurrent analysis.
+    '''Function that slices data into windows for concurrent analysis.
     
-    keyword arguments:
-    - data: 1-dimensional numpy array containing heart rate sensor data
+    Keyword arguments:
+    - data: 1D numpy array containing heart rate sensor data
     - sample_rate: sample rate of the data stream in 'data'
     - windowsize: size of the window that is sliced
     - overlap: overlap between two adjacent windows: 0 <= float < 1.0
-    - min_size: the minimum size for the last (partial) window to be included. Very short windows
-                might not stable for peak fitting, especially when significant noise is present. 
-                Slightly longer windows are likely stable but don't make much sense from a 
-                signal analysis perspective.
+    - min_size: the minimum size for the last (partial) window to be included. Very short windows might not stable for peak fitting, especially when significant noise is present. 
+                Slightly longer windows are likely stable but don't make much sense from a signal analysis perspective.
     
     returns index tuples of windows
     '''
@@ -401,8 +392,8 @@ def make_windows(data, sample_rate, windowsize=120, overlap=0, min_size=20):
     return np.array(slices, dtype=np.int32)
 
 def append_dict(dict_obj, measure_key, measure_value):
-    '''function to append key to continuous dict, if doesn't exist. EAFP
-    keyword arguments:
+    ''' Function to append key to continuous dict., if doesn't exist, EAFP
+    Keyword arguments:
     - dict_obj: dictionary object that contains continuous output measures
     - measure_key: key for the measure to be stored in continuous_dict
     - measure_value: value to be appended to dictionary
@@ -413,22 +404,21 @@ def append_dict(dict_obj, measure_key, measure_value):
         dict_obj[measure_key] = [measure_value]
     return dict_obj
 
-#Peak detection
+# Peak detection
 def detect_peaks(hrdata, rol_mean, ma_perc, sample_rate, update_dict=True, working_data={}):
-    '''Detects heartrate peaks in the given dataset.
+    ''' Detects heart rate peaks in the given dataset.
     Keyword arguments:
-    hr data -- 1-dimensional numpy array or list containing the heart rate data
-    rol_mean -- 1-dimensional numpy array containing the rolling mean of the heart rate signal
-    ma_perc -- the percentage with which to raise the rolling mean,
-    used for fitting detection solutions to data
+    hr data -- 1D numpy array or list containing the heart rate data
+    rol_mean -- 1D numpy array containing the rolling mean of the heart rate signal
+    ma_perc -- the percentage with which to raise the rolling mean
+    Used for fitting detection solutions to data
     sample_rate -- the sample rate of the data set
     update_dict -- whether to update the peak information in the module's data structure
-                   Setting this to False (default True) allows peak function to be re-used for
-                   example by the breath analysis module.
+                   Setting this to False (default True) allows peak function to be re-used for example by the breath analysis module.
     '''
     rmean = np.array(rol_mean)
 
-    #rol_mean = rmean + ((rmean / 100) * ma_perc)
+    # rol_mean = rmean + ((rmean / 100) * ma_perc)
     mn = np.mean(rmean / 100) * ma_perc
     rol_mean = rmean + mn
 
@@ -470,9 +460,8 @@ def detect_peaks(hrdata, rol_mean, ma_perc, sample_rate, update_dict=True, worki
         return peaklist, working_data
 
 def fit_peaks(hrdata, rol_mean, sample_rate, bpmmin=40, bpmmax=180, working_data={}):
-    '''Runs fitting with varying peak detection thresholds given a heart rate signal.
-       Results in relatively noise-robust, temporally accuract peak detection, as no
-       non-linear transformations are involved that might shift peak positions.
+    ''' Runs fitting with varying peak detection thresholds given a heart rate signal.
+       Results in relatively noise-robust, temporally accuract peak detection, as non-linear transformations are involved that might shift peak positions.
     Keyword arguments:
     hrdata - 1-dimensional numpy array or list containing the heart rate data
     rol_mean -- 1-dimensional numpy array containing the rolling mean of the heart rate signal
@@ -534,7 +523,7 @@ def check_peaks(rr_arr, peaklist, ybeat, reject_segmentwise=False, working_data=
 def check_binary_quality(peaklist, binary_peaklist, maxrejects=3, working_data={}):
     '''Checks signal in chunks of 10 beats. 
     Zeros out chunk if number of rejected peaks > maxrejects.
-    Also marks rejected segment coordinates in tuples (x[0], x[1] in working_data['rejected_segments']
+    Also marks rejected segment coordinates in tuples (x[0], x[1] in working_data['rejected_segments'])
     
     Keyword arugments:
     binary_peaklist: list with 0 and 1 corresponding to r-peak accept/reject decisions
@@ -552,17 +541,17 @@ def check_binary_quality(peaklist, binary_peaklist, maxrejects=3, working_data={
         idx += 10
     return working_data
 
-#Calculating all measures
+# Calculating all measures
 def calc_rr(peaklist, sample_rate, working_data={}):
     '''Calculates the R-R (peak-peak) data required for further analysis.
-    Uses calculated measures stored in the working_data{} dict to calculate
-    all required peak-peak datasets. Stores results in the working_data{} dict.
+    Uses calculated measures stored in the working_data{} dict to calculate all required peak-peak datasets. 
+    Stores results in the working_data{} dict.
     Keyword arguments:
     sample_rate -- the sample rate of the data set
     '''
-    peaklist = np.array(peaklist) #cast numpy array to be sure or correct array type
+    peaklist = np.array(peaklist) # Cast numpy array to be sure of correct array type
 
-    #delete first peak if within first 150ms (signal might start mid-beat after peak)
+    # Delete first peak if within first 150ms (signal might start mid-beat after peak)
     if len(peaklist) > 0:
         if peaklist[0] <= ((sample_rate / 1000.0) * 150):
             peaklist = np.delete(peaklist, 0)
@@ -578,9 +567,8 @@ def calc_rr(peaklist, sample_rate, working_data={}):
     return working_data
 
 def update_rr(rr_source, b_peaklist, working_data={}):
-    '''Updates RR differences and RR squared differences based on corrected RR list
-    Uses information about rejected peaks to update RR_list_cor, and RR_diff, RR_sqdiff
-    in the working_data{} dict.
+    '''Updates RR differences and RR squared differences based on corrected RR list.
+    Uses information about rejected peaks to update RR_list_cor, and RR_diff, RR_sqdiff in the working_data{} dict.
     '''
     rr_source = working_data['RR_list']
     b_peaklist = working_data['binary_peaklist']
@@ -599,7 +587,7 @@ def update_rr(rr_source, b_peaklist, working_data={}):
     return working_data
 
 def calc_rr_segment(rr_source, b_peaklist):
-    '''Calculates rr-measures when analysing segmentwist in the 'fast' mode
+    '''Calculates rr-measures when analysing segment-wise in the 'fast' mode.
     '''
     rr_list = [rr_source[i] for i in range(len(rr_source)) if b_peaklist[i] + b_peaklist[i+1] == 2]
     rr_mask = [0 if (b_peaklist[i] + b_peaklist[i+1] == 2) else 1 for i in range(len(rr_source))]
@@ -612,8 +600,7 @@ def calc_rr_segment(rr_source, b_peaklist):
 
 def calc_ts_measures(rr_list, rr_diff, rr_sqdiff, measures={}, working_data={}):
     '''Calculates the time-series measurements.
-    Uses calculated measures stored in the working_data{} dict to calculate
-    the time-series measurements of the heart rate signal.
+    Uses calculated measures stored in the working_data{} dict to calculate the time-series measurements of the heart rate signal.
     Stores results in the measures{} dict object.
     '''
     
@@ -639,8 +626,7 @@ def calc_ts_measures(rr_list, rr_diff, rr_sqdiff, measures={}, working_data={}):
 
 def calc_fd_measures(rr_list, method='welch', measures={}):
     '''Calculates the frequency-domain measurements.
-    Uses calculated measures stored in the working_data{} dict to calculate
-    the frequency-domain measurements of the heart rate signal.
+    Uses calculated measures stored in the working_data{} dict to calculate the frequency-domain measurements of the heart rate signal.
     Stores results in the measures{} dict object.
     '''
     rr_x = []
@@ -674,11 +660,10 @@ def calc_fd_measures(rr_list, method='welch', measures={}):
     return measures
 
 def calc_breathing(rrlist, hrdata, sample_rate, measures={}, working_data={}):
-    '''function to estimate breathing rate from heart rate signal.
+    '''Function to estimate breathing rate from heart rate signal.
     
-    Upsamples the list of detected rr_intervals by interpolation
-    then tries to extract breathing peaks in the signal.
-    keyword arguments:
+    Upsamples the list of detected rr_intervals by interpolation then tries to extract breathing peaks in the signal.
+    Keyword arguments:
     sample_rate -- sample rate of the heart rate signal
     '''
     x = np.linspace(0, len(rrlist), len(rrlist))
@@ -700,8 +685,7 @@ def calc_breathing(rrlist, hrdata, sample_rate, measures={}, working_data={}):
 #Plotting it
 def plotter(working_data, measures, show=True, title='Heart Rate Signal Peak Detection'):
     '''Plots the analysis results.
-    Uses calculated measures and data stored in the working_data{} and measures{}
-    dict objects to visualise the fitted peak detection solution.
+    Uses calculated measures and data stored in the working_data{} and measures{} dict objects to visualise the fitted peak detection solution.
     Keyword arguments:
     show -- whether to display the plot (True) or return a plot object (False) (default True)
     title -- the title used in the plot
@@ -717,7 +701,7 @@ def plotter(working_data, measures, show=True, title='Heart Rate Signal Peak Det
     plt.scatter(peaklist, ybeat, color='green', label='BPM:%.2f' %(measures['bpm']))
     plt.scatter(rejectedpeaks, rejectedpeaks_y, color='red', label='rejected peaks')
     
-    #check if rejected segment detection is on and has rejected segments
+    # Check if rejected segment detection is on and has rejected segments
     try:
         if len(working_data['rejected_segments']) >= 1:
             for segment in working_data['rejected_segments']:
@@ -731,39 +715,30 @@ def plotter(working_data, measures, show=True, title='Heart Rate Signal Peak Det
     else:
         return plt
 
-#Wrapper functions
+# Wrapper functions
 def process(hrdata, sample_rate, windowsize=0.75, report_time=False, 
             calc_freq=False, freq_method='welch', interp_clipping=False, clipping_scale=False,
             interp_threshold=1020, hampel_correct=False, bpmmin=40, bpmmax=180,
             reject_segmentwise=False, measures={}, working_data={}):
     '''Processes the passed heart rate data. Returns measures{} dict containing results.
     Keyword arguments:
-    hrdata -- 1-dimensional numpy array or list containing heart rate data
+    hrdata -- 1D numpy array or list containing heart rate data
     sample_rate -- the sample rate of the heart rate data
     windowsize -- the window size to use in the calculation of the moving average,
                   in seconds (will be calculated as windowsize * sample_rate)
     report_time -- whether to report total processing time of algorithm (default True)
     calc_freq -- whether to compute time-series measurements (default False)
-    freq_method -- method used to extract the frequency spectrum. Available: 'fft' (Fourier Analysis), 
-                   'periodogram', and 'welch' (Welch's method). (Default = 'welch')
-    interp_clipping -- whether to detect and interpolate clipping segments of the signal 
-                       (default True)
-    clipping_scale -- whether to scale the data priod to clipping detection. Can correct errors 
-                      if signal amplitude has been affected after digitization (for example through 
-                      filtering). (Default False)
-    intep_threshold -- threshold to use to detect clipping segments. Recommended to be a few
-                       datapoints below the sensor or ADC's maximum value (to account for
-                       slight data line noise). Default 1020, 4 below max of 1024 for 10-bit ADC
-    hampel_correct -- whether to reduce noisy segments using large median filter. Disabled by
-                      default due to computational complexity, and generally it is not necessary
+    freq_method -- method used to extract the frequency spectrum. Available: 'fft' (Fourier Analysis), 'periodogram', and 'welch' (Welch's method). (Default = 'welch')
+    interp_clipping -- whether to detect and interpolate clipping segments of the signal (default True)
+    clipping_scale -- whether to scale the data priod to clipping detection. Can correct errors if signal amplitude has been affected after digitization (for example through  filtering). (Default False)
+    intep_threshold -- threshold to use to detect clipping segments. Recommended to be a few datapoints below the sensor or ADC's maximum value (to account for slight data line noise). Default 1020, 4 below max of 1024 for 10-bit ADC
+    hampel_correct -- whether to reduce noisy segments using large median filter. Disabled by default due to computational complexity, and generally it is not necessary
     bpmmin -- minimum value to see as likely for BPM when fitting peaks
     bpmmax -- maximum value to see as likely for BPM when fitting peaks
     reject_segmentwise -- whether to reject segments with more than 30% rejected beats. 
                           By default looks at segments of 10 beats at a time. (default False)
-    measures -- measures dict in which results are stored. Custom dictionary can be passed, 
-                otherwise one is created and returned.
-    working_data -- working_data dict in which results are stored. Custom dictionary can be passed, 
-                    otherwise one is created and returned.
+    measures -- measures dict in which results are stored. Custom dictionary can be passed, otherwise one is created and returned.
+    working_data -- working_data dict in which results are stored. Custom dictionary can be passed, otherwise one is created and returned.
     '''
     t1 = time.clock()
 
@@ -801,24 +776,18 @@ def process_segmentwise(hrdata, sample_rate, segment_width=120, segment_overlap=
                         segment_min_size=20, replace_outliers=False, outlier_method='iqr',
                         mode='fast', **kwargs)  :
     '''
-    method that analyses a long heart rate data array by running a moving window 
-    over the data, computing measures in each iteration. Both the window width
-    and the overlap with the previous window location are settable.
+    Method that analyses a long heart rate data array by running a moving window over the data, computing measures in each iteration. 
+    Both the window width and the overlap with the previous window location are settable.
     Keyword arguments:
     ------------------
-    hrdata -- 1-dimensional numpy array or list containing heart rate data
+    hrdata -- 1D numpy array or list containing heart rate data
     sample_rate -- the sample rate of the heart rate data
-    segment_width -- the width of the segment, in seconds, within which all measures 
-                     will be computed.
-    segment_overlap -- the fraction of overlap of adjacent segments, 
-                       needs to be 0 <= segment_overlap < 1
-    replace_outliers -- bool, whether to replace outliers (likely caused by peak fitting
-                        errors on one or more segments) with the median.
-    outlier_method -- which  method to use to detect outliers. Available are the
-                      'interquartile-range' ('iqr') and the 'modified z-score' ('z-score') methods.
-    segment_min_size -- After segmenting the data, a tail end will likely remain that is shorter than the specified
-                        segment_size. segment_min_size sets the minimum size for the last segment of the 
-                        generated series of segments to still be included. Default = 20.
+    segment_width -- the width of the segment, in seconds, within which all measures will be computed.
+    segment_overlap -- the fraction of overlap of adjacent segments, needs to be 0 <= segment_overlap < 1
+    replace_outliers -- bool, whether to replace outliers (likely caused by peak fitting errors on one or more segments) with the median.
+    outlier_method -- which  method to use to detect outliers. Available are the 'interquartile-range' ('iqr') and the 'modified z-score' ('z-score') methods.
+    segment_min_size -- After segmenting the data, a tail end will likely remain that is shorter than the specified segment_size. segment_min_size sets the minimum size for the last segment of the generated series of segments to still be included. 
+    Default = 20.
     returns: 'working_data' and 'measures', two keyed dictionary objects with segmented outputs
     '''
 
@@ -866,7 +835,7 @@ use either \'iqr\' or \'z-score\''
             s_working_data = append_dict(s_working_data, 'peaklist', peaklist)
 
     else:
-        raise ValueError('mode not understood! Needs to be either \'fast\' or \'full\', passed: %s' %mode)
+        raise ValueError('Mode not understood! Needs to be either \'fast\' or \'full\', passed: %s' %mode)
 
     if replace_outliers:
         if outlier_method.lower() == 'iqr':
