@@ -2,16 +2,26 @@ from datetime import datetime
 import time
 
 import numpy as np
+import scipy
+import os
+import scipy.stats as stats
 from scipy.interpolate import UnivariateSpline
 from scipy.signal import butter, filtfilt, welch, periodogram, resample_poly
-pip install wav2vec
+from scipy.io import wavfile
+import wave, struct
+import matplotlib.pyplot as pp
 
-sys.path.append('../')
-import heartbeat as hb
+from pylab import *
+import scipy.signal.signaltools as sigtool
+import scipy.signal as signal
+from scipy.fftpack import fft
+
 
 from . import exceptions
 
-__all__ = ['enhance_peaks',
+__all__ = ['window_rms',
+           'get envelope',
+           'enhance_peaks',
            'get_data', 
            'get_samplerate_mstimer', 
            'get_samplerate_datetime', 
@@ -26,29 +36,284 @@ __all__ = ['enhance_peaks',
            'scale_sections',
            'filtersignal']
 
-wav2vec pcg.wav -f CSV --height 0 > pcg.csv
-measures = {}
-def get_data(filename):
-    dataset = pd.read_csv(filename)
-    return dataset
+#r_dir='/home/.../sound_files'
 
-# Data handling
-def get_data(pcg, delim=',', column_name='None', encoding=None):
+# Parameters
 
-# Preprocessing
+Fmax         = 10000 #maximum frequency for the sonogram [Hz]
+step_time    = 1.2   #len for the time series segment  [Seconds]->>>>>>>>> Change it to zoom in the signal time!!
+w_cut        = 300   #Frequency cut for our envelope implementation [Hz]
+w_cut_simple = 150   #Frecuency cut for the low-pass envelope [Hz]
+
+
+###################################
+#1) Function envelope with rms slide window (for the RMS-envelope implementation)
+
+def window_rms(inputSignal, window_size):
+    a2 = np.power(inputSignal,2)
+    window = np.ones(window_size)/float(window_size)
+    return np.sqrt(np.convolve(a2, window, 'valid'))
+
+##################################
+
+#2) Filter is directly implemented in Abs(signal)
+
+##################################
+
+
+def getEnvelope(inputSignal):
+# Taking the absolute value
+
+    absoluteSignal = []
+    for sample in inputSignal:
+        absoluteSignal.append (abs (sample))
+
+    # Peak detection
+
+    intervalLength = 35 # change this number depending on your Signal frequency content and time scale
+    outputSignal = []
+
+    for baseIndex in range (0, len (absoluteSignal)):
+        maximum = 0
+        for lookbackIndex in range (intervalLength):
+            maximum = max (absoluteSignal [baseIndex - lookbackIndex], maximum)
+        outputSignal.append (maximum)
+
+    return outputSignal
+
+
+##################################
+#Loop over sound files in directory
+
+for root, sub, files in os.walk(r_dir):
+    files = sorted(files)
+    for f in files:       
+        w     = scipy.io.wavfile.read(os.path.join(root, f))
+        print (r_dir)
+        base=os.path.basename(f)
+        print (base)
+        dir = os.path.dirname(base)
+        if not os.path.exists(dir):
+           os.mkdir(base)        
+        print('-------------------------')
+        
+        a=w[1]
+        print('sound vector: ')#, w
+
+        i=w[1].size
+
+        print ('vector size in Frames: ',i)
+
+        x     = w[1]
+        x_size= x.size
+        tt    = w[1]
+
+        #Comment for stereo or not 
+        v1    = np.arange(float (i)/float(2))# not stereo
+        #v1    = np.arange(float (i))#/float(2)) #stereo
+        c     = np.c_[v1,x]
+
+        print ('vector c:\n' , c)
+        print ('vector c1:\n',c[0])
+
+        cc=c.T #transpose
+
+        x = cc[0]
+        x1= cc[1]
+        x2= cc[1]#2
+
+        print ('First cc comp:\n ', cc[0])
+        print ('Second cc comp:\n', cc[1])
+        print ('Third cc comp: \n', cc[1])# cc[2] if stereo
+
+        
+        #Low Pass Frequency for Filter definition (envelope case 2)
+
+        W2       = float(w_cut_simple)/w[0] #filter parameter Cut frequency over the sample frequency
+        (b2, a2) = signal.butter(1, W2, btype='lowpass')        
+
+        #Filter definition for our envelope (3) implementation
+
+        W1       = float(w_cut)/w[0] #filter parameter Cut frequency over the sample frequency
+        (b, a)   = signal.butter(4, W1, btype='lowpass')
+        aa       = scipy.signal.medfilt(scipy.signal.detrend(x2, axis=-1, type='linear'))
+        i        = x.size
+        p        = np.arange(i)*float(1)/w[0]        
+                  
+
+        stop      = i
+        step      = int(step_time*w[0])
+        intervalos= np.arange(0, i,step)
+
+        print( intervalos)
+        print('-------------------')
+        print('The step: ',step)
+        print('-------------------')
+
+        time1=x*float(1)/w[0]
+
+        ##chop time serie##
+        for delta_t in intervalos:
+                  
+            aa_part                   = aa[delta_t:delta_t+step]
+            x1_part                   = x2[delta_t:delta_t+step]#or x1
+            x2_part                   = x2[delta_t:delta_t+step]
+
+            #envelope implementations
+            x1_part_rms               = window_rms(aa,500)##envolvente Rms (second parameter is windows size)
+            time_rms                  = np.arange(len(x1_part_rms))*float(1)/w[0]
+
+                
+            #envelope low pass
+            filtered_aver_simple      = signal.filtfilt(b2, a2, abs(aa_part))
+            filtered_aver_vs_ped_simp = filtered_aver_simple
+
+            # envelope our implementation
+            aver                      = getEnvelope(aa_part)
+            filtered_aver             = signal.filtfilt(b, a, aver)
+            filtered_aver_part        = filtered_aver[delta_t:delta_t+step]
+                
+            aver_vs                   = getEnvelope(x2_part)
+            filtered_aver_vs          = signal.filtfilt(b, a, aver_vs)
+            envelope_part             = filtered_aver
+            filtered_aver_vs_part     = filtered_aver_vs[delta_t:delta_t+step]
+
+            #time (to x axis in seconds)        
+
+            time_part                 = time1[delta_t:delta_t+step]
+            time                      = time1[delta_t:delta_t+step]
+                
+
+            ###################################################
+
+            #Figure definition
+            pp.figure(figsize=(14,9.5*0.6))
+            pp.title('Sound Signal')
+            pp.subplot(2,1,1)
+
+            #Uncoment what envelope you whant to plot
+
+            grid(True)
+
+            #Signal
+            label_S,= pp.plot(x*float(1)/w[0],x1, color='c',label='Time Signal')
+
+            #Abs value of signal
+            #pp.plot(x*float(1)/float(w[0]),abs(x1), color='y',label='Absolute value of Time Signal') 
+
+               
+            # Low pass filter envelope #
+            envelope_1,= pp.plot(time_part,filtered_aver_vs_ped_simp, linestyle='--',color='b',label='Low-pass Filter envelope',linewidth=3)
+
+            # Rms envelope #
+            envelope_2,= pp.plot(time_rms+500/w[0],x1_part_rms, linestyle='-',color='k',label='RMS aproach envelope',linewidth=1)
+                
+            # Our implementation #
+            #envelope_pre,=pp.plot(time_part,aver,color='k',label='Second step for envelope',linewidth=1)# Pre-envelope                               
+            envelope_3,= pp.plot(time_part,filtered_aver_vs, color='r',label='Final Peak aproach  envelope',linewidth=2)
+
+
+            pp.ylabel('Amplitude [Arbitrary units]')        
+            pp.xlim([delta_t*float(1)/w[0],(delta_t+step)*float(1)/w[0]+0.001])
+            pp.xticks(np.arange(delta_t*float(1)/w[0],(delta_t+step)*float(1)/w[0]+0.001,0.1),fontsize = 12)
+            #pp.yticks(np.arange(-15000,15000+5000,5000),fontsize = 12)
+            pp.ylim(-20000,20000)
+            pp.tick_params( axis='x', labelbottom='off')
+            pp.tick_params( axis='y', labelleft='off')
+            
+            pp.legend([label_S,envelope_1,envelope_2,envelope_3],['Time Signal', 'Low-pass Filter envelope','RMS aproach envelope','Final Peak aproach  envelope'],fontsize= 'x-small',loc=4)
+            
+
+            ################################################
+            #Sonogram                                        
+            pp.subplot(2,1,2)
+
+            grid(True)
+            nfft_=int(w[0]*0.010)
+         
+            pp.specgram(x1, NFFT=int(w[0]*0.01) , Fs=w[0], noverlap = int(w[0]*0.005),cmap='jet')               
+            #pp.specgram(x1, NFFT=int(w[0]*0.01) ,  window= scipy.signal.tukey(int(w[0]*0.01)), Fs=w[0], noverlap = int(w[0]*0.005),cmap='jet') #other window              
+            #pp.xticks(np.arange(0,8+0.001,0.1),fontsize = 12)
+            #pp.xlim(0, step_time+0.001)   
+            pp.xlim([delta_t*float(1)/w[0],(delta_t+step)*float(1)/w[0]+0.001])
+            pp.xticks(np.arange(delta_t*float(1)/w[0],(delta_t+step)*float(1)/w[0]+0.001,0.1),fontsize = 12)
+            pp.yticks(np.arange(0,Fmax,1000),fontsize = 12)            
+            pp.ylim(0, Fmax)
+            pp.xlabel('Time [Sec]')
+            pp.ylabel('Frequency [Hz]')
+            #pp.legend("legend",fontsize= 'x-small')    
+            #pp.tick_params( axis='x', labelbottom='off')
+                
+        
+            figname = "%s.png" %(str(base)+'/'+str(base)+'_signal_zoom_'+str(delta_t*float(1)/w[0]))    
+            #pp.savefig(os.path.join(base,figname),dpi=200)
+            res=pp.savefig(figname,dpi=200)
+            pp.close('all')
+
+            ###############################################################
+            #save in plot file txt with data if necesary
+
+            #f_out     = open('plots/%s.txt' %(str(base)+'_'+str(delta_t*float(1)/float(w[0]))), 'w')                
+            #xxx       = np.c_[time_part,x2_part,filtered_aver,filtered_aver_vs]
+            #np.savetxt(f_out,xxx,fmt='%f %f %f %f',delimiter='\t',header="time   #sound   #sound-evelope   #vS-envelope") 
+                                              
+        print ('.---Completed----.')
+
+
+
+#Data handling
+def get_data(filename, delim=',', column_name='None', encoding=None):
+    '''Loads data from a .CSV or .MAT file into numpy array.
+    Keyword Arguments:
+    filename -- absolute or relative path to the file object to read
+    delim -- the delimiter used if CSV file passed, (default ',')
+    column_name -- for CSV files with header: specify column that contains the data
+                   for matlab files it specifies the table name that contains the data
+                   (default 'None')
+    '''
+    file_ext = filename.split('.')[-1]
+    if file_ext == 'csv' or file_ext == 'txt':
+        if column_name != 'None':
+            hrdata = np.genfromtxt(filename, delimiter=delim, names=True, dtype=None, encoding=None)
+            try:
+                hrdata = hrdata[column_name]
+            except Exception as error:
+                print('\nError loading column "%s" from file "%s". \
+                Is column name specified correctly?\n' %(column_name, filename))
+                print('------\nError message: ' + str(error) + '\n------')
+        elif column_name == 'None':
+            hrdata = np.genfromtxt(filename, delimiter=delim, dtype=np.float64)
+        else:
+            print('\nError: column name "%s" not found in header of "%s".\n'
+                  %(column_name, filename))
+    elif file_ext == 'mat':
+        print('getting matlab file')
+        import scipy.io
+        data = scipy.io.loadmat(filename)
+        if column_name != "None":
+            hrdata = np.array(data[column_name][:, 0], dtype=np.float64)
+        else:
+            print("\nError: column name required for Matlab .mat files\n\n")
+    else:
+        print('unknown file format')
+        return None
+    return hrdata
+
+#Preprocessing
 def preprocess_pcg(data, sample_rate):
-    '''preprocesses PCG data
+    '''preprocesses PCG data.
+    function to be customisable asap. For now uses default settings 
     '''
     preprocessed = scale_sections(data, sample_rate, windowsize=2.5)
     preprocessed = filtersignal(preprocessed, cutoff=0.5, sample_rate=sample_rate,
                                    order=4, filtertype='highpass')
-    # Set signal mean to zero, clip out negative values
+    #set signal mean to zero, clip out negative values
     mn = np.mean(preprocessed)
     preprocessed = np.clip(preprocessed - mn, a_min=0, a_max=None)
-    # Second linear scaling
+    #second linear scaling
     preprocessed = scale_sections(preprocessed, sample_rate, 5) 
 
-    # Polyphase filtering. Note this doubles the sample rate.
+    #polyphase filtering. Note this doubles the samplerate!
     preprocessed = resample_poly(preprocessed, len(preprocessed)*4,
                                  len(preprocessed)*2)
     preprocessed = enhance_peaks(preprocessed, iterations=2)
@@ -67,9 +332,10 @@ def scale_data(data):
     return data
 
 def scale_sections(data, sample_rate, windowsize=2.5):
-    '''Scales the data locally within the given window size.
-    Use prior to lowpass filtering for best results on signal where noise creates a variable amplitude.
-    Keyword arguments:
+    '''scales the data locally within the given window size.
+    Use prior to lowpass filtering for best results on 
+    signal where noise creates a variable ampliture.
+    keyword arguments:
     data -- numpy array or list to be scales
     sample_rate -- sample rate of the signal
     windowsize -- size of the window within which signal is scaled, in seconds (default 2.5s)
@@ -95,7 +361,7 @@ def scale_sections(data, sample_rate, windowsize=2.5):
 
 def enhance_peaks(hrdata, iterations=2):
     '''Attempts to enhance the signal-noise ratio by accentuating the highest peaks
-    Note: denoise first
+    note: denoise first
     
     Keyword arguments:
     hrdata -- numpy array or list containing heart rate data
@@ -108,10 +374,11 @@ def enhance_peaks(hrdata, iterations=2):
     return hrdata    
 
 def mark_clipping(hrdata, threshold):
-    '''Function that marks start and end of clipping part - it detects the start and end of clipping segments and returns them
+    '''function that marks start and end of clipping part
+    it detects the start and end of clipping segments and returns them
     
-    Keyword arguments:
-    - hrdata: 1D list or numpy array containing heart rate data
+    keyword arguments:
+    - data: 1d list or numpy array containing heart rate data
     - threshold: the threshold for clipping, recommended to
                  be a few data points below ADC or sensor max value, 
                  to compensate for signal noise (default 1020)
@@ -137,15 +404,17 @@ def mark_clipping(hrdata, threshold):
     return clipping_segments
 
 def interpolate_peaks(hrdata, sample_rate, threshold=1020):
-    ''' Function that interpolates peaks between the clipping segments using cubic spline interpolation.
+    '''function that interpolates peaks between
+    the clipping segments using cubic spline interpolation.
     
     It takes the clipping start +/- 100ms to calculate the spline.
     
-    Returns full data array with interpolated segments patched in.
+    Returns full data array with interpolated segments patched in
     
     keyword arguments:
-    data - 1D list or numpy array containing heart rate data
-    clipping_segments - list containing tuples of start- and end-points of clipping segments.
+    data - 1d list or numpy array containing heart rate data
+    clipping_segments - list containing tuples of start- and 
+                        end-points of clipping segments.
     '''
     clipping_segments = mark_clipping(hrdata, threshold)
     num_datapoints = int(0.1 * sample_rate)
@@ -154,8 +423,8 @@ def interpolate_peaks(hrdata, sample_rate, threshold=1020):
     
     for segment in clipping_segments:
         if segment[0] < num_datapoints: 
-            # If clipping is present at start of signal, skip.
-            # Can not interpolate accurately when there is insufficient data prior to clipping segment.
+            #if clipping is present at start of signal, skip.
+            #We cannot interpolate accurately when there is insufficient data prior to clipping segment.
             pass
         else: 
             antecedent = hrdata[segment[0] - num_datapoints : segment[0]]
@@ -177,7 +446,7 @@ def interpolate_peaks(hrdata, sample_rate, threshold=1020):
     return hrdata
 
 def raw_to_pcg(hrdata, enhancepeaks=False):
-    '''Flips raw signal with negative peaks to normal PCG
+    '''Flips raw signal with negative mV peaks to normal PCG
     Keyword arguments:
     hrdata -- numpy array or list containing raw heart rate data
     enhancepeaks -- boolean, whether to apply peak accentuation (default False)
@@ -201,9 +470,9 @@ def get_samplerate_datetime(datetimedata, timeformat='%H:%M:%S.%f'):
     Keyword arguments:
     timerdata -- array containing values of a timer, datetime strings
     timeformat -- the format of the datetime-strings in datetimedata
-    default('%H:%M:%S.f', 24-hour-based time including ms: 21:43:12.569)
+    default('%H:%M:%S.f', 24-hour based time including ms: 21:43:12.569)
     '''
-    datetimedata = np.asarray(datetimedata, dtype='str') # Cast as str in case of np.bytes type
+    datetimedata = np.asarray(datetimedata, dtype='str') #cast as str in case of np.bytes type
     elapsed = ((datetime.strptime(datetimedata[-1], timeformat) -
                 datetime.strptime(datetimedata[0], timeformat)).total_seconds())
     sample_rate = (len(datetimedata) / elapsed)
@@ -212,7 +481,7 @@ def get_samplerate_datetime(datetimedata, timeformat='%H:%M:%S.%f'):
 def rollwindow(data, windowsize):
     '''Returns rolling window of size 'window' over dataset 'data'.
     Keyword arguments:
-    data -- 1D-dimensional numpy array
+    data -- 1-dimensional numpy array
     window -- window size
     '''
     shape = data.shape[:-1] + (data.shape[-1] - windowsize + 1, windowsize)
@@ -222,7 +491,7 @@ def rollwindow(data, windowsize):
 def rolmean(data, windowsize, sample_rate):
     '''Calculates the rolling mean over passed data.
     Keyword arguments:
-    data -- 1D numpy array or list
+    data -- 1-dimensional numpy array or list
     windowsize -- the window size to use, in seconds (calculated as windowsize * sample_rate)
     sample_rate -- the sample rate of the data set
     '''
@@ -269,7 +538,7 @@ def butter_bandpass(lowcut, highcut, fs, order=5):
 def filtersignal(data, cutoff, sample_rate, order, filtertype='lowpass'):
     '''Applies the Butterworth lowpass filter
     Keyword arguments:
-    data -- 1D numpy array or list containing the to be filtered data
+    data -- 1-dimensional numpy array or list containing the to be filtered data
     cutoff -- the cutoff frequency of the filter. Expects float for low and high types
               for bandpass filter expects list or array [low, high]
     sample_rate -- the sample rate of the data set
@@ -285,27 +554,30 @@ def filtersignal(data, cutoff, sample_rate, order, filtertype='lowpass'):
     return filtered_data
 
 def MAD(data):
-    '''Function to compute median absolute deviation of data slice.
+    '''function to compute median absolute deviation of data slice
        https://en.wikipedia.org/wiki/Median_absolute_deviation
     
-    Keyword arguments:
-    - data: 1D numpy array containing data
+    keyword arguments:
+    - data: 1-dimensional numpy array containing data
     '''
     med = np.median(data)
     return np.median(np.abs(data - med))
 
 def hampelfilt(data, filtsize=6):
-    '''Function to detect outliers based on hampel filter
-       Filter takes datapoint and six surrounding samples.
-       Detect outliers based on being more than 3 St.D. from window mean.
+    '''function to detect outliers based on hampel filter
+       filter takes datapoint and six surrounding samples.
+       Detect outliers based on being more than 3std from window mean
     
-    Keyword arguments:
-    - data: 1D numpy array containing data
-    - filtsize: the filter size expresses the number of datapoints taken surrounding the analysed datapoint. A filtsiz of 6 means three datapoints on each side are taken. Total filtersize is thus filtsize + 1 (datapoint evaluated)
+    keyword arguments:
+    - data: 1-dimensional numpy array containing data
+    - filtsize: the filter size expressed the number of datapoints
+                taken surrounding the analysed datapoint. a filtsize
+                of 6 means three datapoints on each side are taken.
+                total filtersize is thus filtsize + 1 (datapoint evaluated)
     '''
-    output = [x for x in data] # Generate second list to prevent overwriting first.
+    output = [x for x in data] #generate second list to prevent overwriting first
     onesided_filt = filtsize // 2
-    # madarray = [0 for x in range(0, onesided_filt)]
+    #madarray = [0 for x in range(0, onesided_filt)]
     for i in range(onesided_filt, len(data) - onesided_filt - 1):
         dataslice = output[i - onesided_filt : i + onesided_filt]
         mad = MAD(dataslice)
@@ -321,9 +593,9 @@ def hampel_correcter(data, sample_rate, filtsize=6):
     return data - hampelfilt(data, filtsize=int(sample_rate))
 
 def outliers_iqr_method(hrvalues):
-    '''Function that removes outliers based on the interquartile range method
-    See: https://en.wikipedia.org/wiki/Interquartile_range
-    Keyword arguments:
+    '''function that removes outliers based on the interquartile range method
+    see: https://en.wikipedia.org/wiki/Interquartile_range
+    keyword arguments:
     hrvalues -- list of computed hr or hrv values, from which outliers need to be identified
     returns cleaned list, with outliers substituted for the median
     '''
@@ -341,10 +613,11 @@ def outliers_iqr_method(hrvalues):
     return output
 
 def outliers_modified_z(hrvalues):
-    '''Function that removes outliers based on the modified Z-score metric.
-    Keyword arguments:
-    - hrvalues: list of computed hr or hrv values, from which outliers need to be identified
-    Returns cleaned list, with outliers substituted for the median.
+    '''function that removes outliers based on the modified Z-score metric
+    keyword arguments:
+    - hrvalues: list of computed hr or hrv values, from which outliers 
+                need to be identified
+    returns cleaned list, with outliers substituted for the median
     '''
     hrvalues = np.array(hrvalues)
     threshold = 3.5
@@ -360,15 +633,17 @@ def outliers_modified_z(hrvalues):
     return output
 
 def make_windows(data, sample_rate, windowsize=120, overlap=0, min_size=20):
-    '''Function that slices data into windows for concurrent analysis.
+    '''function that slices data into windows for concurrent analysis.
     
-    Keyword arguments:
-    - data: 1D numpy array containing heart rate sensor data
+    keyword arguments:
+    - data: 1-dimensional numpy array containing heart rate sensor data
     - sample_rate: sample rate of the data stream in 'data'
     - windowsize: size of the window that is sliced
     - overlap: overlap between two adjacent windows: 0 <= float < 1.0
-    - min_size: the minimum size for the last (partial) window to be included. Very short windows might not stable for peak fitting, especially when significant noise is present. 
-                Slightly longer windows are likely stable but don't make much sense from a signal analysis perspective.
+    - min_size: the minimum size for the last (partial) window to be included. Very short windows
+                might not stable for peak fitting, especially when significant noise is present. 
+                Slightly longer windows are likely stable but don't make much sense from a 
+                signal analysis perspective.
     
     returns index tuples of windows
     '''
@@ -392,8 +667,8 @@ def make_windows(data, sample_rate, windowsize=120, overlap=0, min_size=20):
     return np.array(slices, dtype=np.int32)
 
 def append_dict(dict_obj, measure_key, measure_value):
-    ''' Function to append key to continuous dict., if doesn't exist, EAFP
-    Keyword arguments:
+    '''function to append key to continuous dict, if doesn't exist. EAFP
+    keyword arguments:
     - dict_obj: dictionary object that contains continuous output measures
     - measure_key: key for the measure to be stored in continuous_dict
     - measure_value: value to be appended to dictionary
@@ -404,21 +679,22 @@ def append_dict(dict_obj, measure_key, measure_value):
         dict_obj[measure_key] = [measure_value]
     return dict_obj
 
-# Peak detection
+#Peak detection
 def detect_peaks(hrdata, rol_mean, ma_perc, sample_rate, update_dict=True, working_data={}):
-    ''' Detects heart rate peaks in the given dataset.
+    '''Detects heartrate peaks in the given dataset.
     Keyword arguments:
-    hr data -- 1D numpy array or list containing the heart rate data
-    rol_mean -- 1D numpy array containing the rolling mean of the heart rate signal
-    ma_perc -- the percentage with which to raise the rolling mean
-    Used for fitting detection solutions to data
+    hr data -- 1-dimensional numpy array or list containing the heart rate data
+    rol_mean -- 1-dimensional numpy array containing the rolling mean of the heart rate signal
+    ma_perc -- the percentage with which to raise the rolling mean,
+    used for fitting detection solutions to data
     sample_rate -- the sample rate of the data set
     update_dict -- whether to update the peak information in the module's data structure
-                   Setting this to False (default True) allows peak function to be re-used for example by the breath analysis module.
+                   Setting this to False (default True) allows peak function to be re-used for
+                   example by the breath analysis module.
     '''
     rmean = np.array(rol_mean)
 
-    # rol_mean = rmean + ((rmean / 100) * ma_perc)
+    #rol_mean = rmean + ((rmean / 100) * ma_perc)
     mn = np.mean(rmean / 100) * ma_perc
     rol_mean = rmean + mn
 
@@ -460,8 +736,9 @@ def detect_peaks(hrdata, rol_mean, ma_perc, sample_rate, update_dict=True, worki
         return peaklist, working_data
 
 def fit_peaks(hrdata, rol_mean, sample_rate, bpmmin=40, bpmmax=180, working_data={}):
-    ''' Runs fitting with varying peak detection thresholds given a heart rate signal.
-       Results in relatively noise-robust, temporally accuract peak detection, as non-linear transformations are involved that might shift peak positions.
+    '''Runs fitting with varying peak detection thresholds given a heart rate signal.
+       Results in relatively noise-robust, temporally accuract peak detection, as no
+       non-linear transformations are involved that might shift peak positions.
     Keyword arguments:
     hrdata - 1-dimensional numpy array or list containing the heart rate data
     rol_mean -- 1-dimensional numpy array containing the rolling mean of the heart rate signal
@@ -523,7 +800,7 @@ def check_peaks(rr_arr, peaklist, ybeat, reject_segmentwise=False, working_data=
 def check_binary_quality(peaklist, binary_peaklist, maxrejects=3, working_data={}):
     '''Checks signal in chunks of 10 beats. 
     Zeros out chunk if number of rejected peaks > maxrejects.
-    Also marks rejected segment coordinates in tuples (x[0], x[1] in working_data['rejected_segments'])
+    Also marks rejected segment coordinates in tuples (x[0], x[1] in working_data['rejected_segments']
     
     Keyword arugments:
     binary_peaklist: list with 0 and 1 corresponding to r-peak accept/reject decisions
@@ -541,17 +818,17 @@ def check_binary_quality(peaklist, binary_peaklist, maxrejects=3, working_data={
         idx += 10
     return working_data
 
-# Calculating all measures
+#Calculating all measures
 def calc_rr(peaklist, sample_rate, working_data={}):
     '''Calculates the R-R (peak-peak) data required for further analysis.
-    Uses calculated measures stored in the working_data{} dict to calculate all required peak-peak datasets. 
-    Stores results in the working_data{} dict.
+    Uses calculated measures stored in the working_data{} dict to calculate
+    all required peak-peak datasets. Stores results in the working_data{} dict.
     Keyword arguments:
     sample_rate -- the sample rate of the data set
     '''
-    peaklist = np.array(peaklist) # Cast numpy array to be sure of correct array type
+    peaklist = np.array(peaklist) #cast numpy array to be sure or correct array type
 
-    # Delete first peak if within first 150ms (signal might start mid-beat after peak)
+    #delete first peak if within first 150ms (signal might start mid-beat after peak)
     if len(peaklist) > 0:
         if peaklist[0] <= ((sample_rate / 1000.0) * 150):
             peaklist = np.delete(peaklist, 0)
@@ -567,8 +844,9 @@ def calc_rr(peaklist, sample_rate, working_data={}):
     return working_data
 
 def update_rr(rr_source, b_peaklist, working_data={}):
-    '''Updates RR differences and RR squared differences based on corrected RR list.
-    Uses information about rejected peaks to update RR_list_cor, and RR_diff, RR_sqdiff in the working_data{} dict.
+    '''Updates RR differences and RR squared differences based on corrected RR list
+    Uses information about rejected peaks to update RR_list_cor, and RR_diff, RR_sqdiff
+    in the working_data{} dict.
     '''
     rr_source = working_data['RR_list']
     b_peaklist = working_data['binary_peaklist']
@@ -587,7 +865,7 @@ def update_rr(rr_source, b_peaklist, working_data={}):
     return working_data
 
 def calc_rr_segment(rr_source, b_peaklist):
-    '''Calculates rr-measures when analysing segment-wise in the 'fast' mode.
+    '''Calculates rr-measures when analysing segmentwist in the 'fast' mode
     '''
     rr_list = [rr_source[i] for i in range(len(rr_source)) if b_peaklist[i] + b_peaklist[i+1] == 2]
     rr_mask = [0 if (b_peaklist[i] + b_peaklist[i+1] == 2) else 1 for i in range(len(rr_source))]
@@ -600,7 +878,8 @@ def calc_rr_segment(rr_source, b_peaklist):
 
 def calc_ts_measures(rr_list, rr_diff, rr_sqdiff, measures={}, working_data={}):
     '''Calculates the time-series measurements.
-    Uses calculated measures stored in the working_data{} dict to calculate the time-series measurements of the heart rate signal.
+    Uses calculated measures stored in the working_data{} dict to calculate
+    the time-series measurements of the heart rate signal.
     Stores results in the measures{} dict object.
     '''
     
@@ -626,7 +905,8 @@ def calc_ts_measures(rr_list, rr_diff, rr_sqdiff, measures={}, working_data={}):
 
 def calc_fd_measures(rr_list, method='welch', measures={}):
     '''Calculates the frequency-domain measurements.
-    Uses calculated measures stored in the working_data{} dict to calculate the frequency-domain measurements of the heart rate signal.
+    Uses calculated measures stored in the working_data{} dict to calculate
+    the frequency-domain measurements of the heart rate signal.
     Stores results in the measures{} dict object.
     '''
     rr_x = []
@@ -652,6 +932,8 @@ def calc_fd_measures(rr_list, method='welch', measures={}):
         print("specified method incorrect, use 'fft', 'periodogram' or 'welch'")
         raise SystemExit(0)
     
+    measures['frq'] = frq
+    measures['psd'] = psd
     measures['lf'] = np.trapz(abs(psd[(frq >= 0.04) & (frq <= 0.15)]))
     measures['hf'] = np.trapz(abs(psd[(frq >= 0.16) & (frq <= 0.5)]))
     measures['lf/hf'] = measures['lf'] / measures['hf']
@@ -660,10 +942,11 @@ def calc_fd_measures(rr_list, method='welch', measures={}):
     return measures
 
 def calc_breathing(rrlist, hrdata, sample_rate, measures={}, working_data={}):
-    '''Function to estimate breathing rate from heart rate signal.
+    '''function to estimate breathing rate from heart rate signal.
     
-    Upsamples the list of detected rr_intervals by interpolation then tries to extract breathing peaks in the signal.
-    Keyword arguments:
+    Upsamples the list of detected rr_intervals by interpolation
+    then tries to extract breathing peaks in the signal.
+    keyword arguments:
     sample_rate -- sample rate of the heart rate signal
     '''
     x = np.linspace(0, len(rrlist), len(rrlist))
@@ -685,7 +968,8 @@ def calc_breathing(rrlist, hrdata, sample_rate, measures={}, working_data={}):
 #Plotting it
 def plotter(working_data, measures, show=True, title='Heart Rate Signal Peak Detection'):
     '''Plots the analysis results.
-    Uses calculated measures and data stored in the working_data{} and measures{} dict objects to visualise the fitted peak detection solution.
+    Uses calculated measures and data stored in the working_data{} and measures{}
+    dict objects to visualise the fitted peak detection solution.
     Keyword arguments:
     show -- whether to display the plot (True) or return a plot object (False) (default True)
     title -- the title used in the plot
@@ -701,7 +985,7 @@ def plotter(working_data, measures, show=True, title='Heart Rate Signal Peak Det
     plt.scatter(peaklist, ybeat, color='green', label='BPM:%.2f' %(measures['bpm']))
     plt.scatter(rejectedpeaks, rejectedpeaks_y, color='red', label='rejected peaks')
     
-    # Check if rejected segment detection is on and has rejected segments
+    #check if rejected segment detection is on and has rejected segments
     try:
         if len(working_data['rejected_segments']) >= 1:
             for segment in working_data['rejected_segments']:
@@ -715,30 +999,39 @@ def plotter(working_data, measures, show=True, title='Heart Rate Signal Peak Det
     else:
         return plt
 
-# Wrapper functions
+#Wrapper functions
 def process(hrdata, sample_rate, windowsize=0.75, report_time=False, 
             calc_freq=False, freq_method='welch', interp_clipping=False, clipping_scale=False,
             interp_threshold=1020, hampel_correct=False, bpmmin=40, bpmmax=180,
             reject_segmentwise=False, measures={}, working_data={}):
     '''Processes the passed heart rate data. Returns measures{} dict containing results.
     Keyword arguments:
-    hrdata -- 1D numpy array or list containing heart rate data
+    hrdata -- 1-dimensional numpy array or list containing heart rate data
     sample_rate -- the sample rate of the heart rate data
     windowsize -- the window size to use in the calculation of the moving average,
                   in seconds (will be calculated as windowsize * sample_rate)
     report_time -- whether to report total processing time of algorithm (default True)
     calc_freq -- whether to compute time-series measurements (default False)
-    freq_method -- method used to extract the frequency spectrum. Available: 'fft' (Fourier Analysis), 'periodogram', and 'welch' (Welch's method). (Default = 'welch')
-    interp_clipping -- whether to detect and interpolate clipping segments of the signal (default True)
-    clipping_scale -- whether to scale the data priod to clipping detection. Can correct errors if signal amplitude has been affected after digitization (for example through  filtering). (Default False)
-    intep_threshold -- threshold to use to detect clipping segments. Recommended to be a few datapoints below the sensor or ADC's maximum value (to account for slight data line noise). Default 1020, 4 below max of 1024 for 10-bit ADC
-    hampel_correct -- whether to reduce noisy segments using large median filter. Disabled by default due to computational complexity, and generally it is not necessary
+    freq_method -- method used to extract the frequency spectrum. Available: 'fft' (Fourier Analysis), 
+                   'periodogram', and 'welch' (Welch's method). (Default = 'welch')
+    interp_clipping -- whether to detect and interpolate clipping segments of the signal 
+                       (default True)
+    clipping_scale -- whether to scale the data priod to clipping detection. Can correct errors 
+                      if signal amplitude has been affected after digitization (for example through 
+                      filtering). (Default False)
+    intep_threshold -- threshold to use to detect clipping segments. Recommended to be a few
+                       datapoints below the sensor or ADC's maximum value (to account for
+                       slight data line noise). Default 1020, 4 below max of 1024 for 10-bit ADC
+    hampel_correct -- whether to reduce noisy segments using large median filter. Disabled by
+                      default due to computational complexity, and generally it is not necessary
     bpmmin -- minimum value to see as likely for BPM when fitting peaks
     bpmmax -- maximum value to see as likely for BPM when fitting peaks
     reject_segmentwise -- whether to reject segments with more than 30% rejected beats. 
                           By default looks at segments of 10 beats at a time. (default False)
-    measures -- measures dict in which results are stored. Custom dictionary can be passed, otherwise one is created and returned.
-    working_data -- working_data dict in which results are stored. Custom dictionary can be passed, otherwise one is created and returned.
+    measures -- measures dict in which results are stored. Custom dictionary can be passed, 
+                otherwise one is created and returned.
+    working_data -- working_data dict in which results are stored. Custom dictionary can be passed, 
+                    otherwise one is created and returned.
     '''
     t1 = time.clock()
 
@@ -776,18 +1069,24 @@ def process_segmentwise(hrdata, sample_rate, segment_width=120, segment_overlap=
                         segment_min_size=20, replace_outliers=False, outlier_method='iqr',
                         mode='fast', **kwargs)  :
     '''
-    Method that analyses a long heart rate data array by running a moving window over the data, computing measures in each iteration. 
-    Both the window width and the overlap with the previous window location are settable.
+    method that analyses a long heart rate data array by running a moving window 
+    over the data, computing measures in each iteration. Both the window width
+    and the overlap with the previous window location are settable.
     Keyword arguments:
     ------------------
-    hrdata -- 1D numpy array or list containing heart rate data
+    hrdata -- 1-dimensional numpy array or list containing heart rate data
     sample_rate -- the sample rate of the heart rate data
-    segment_width -- the width of the segment, in seconds, within which all measures will be computed.
-    segment_overlap -- the fraction of overlap of adjacent segments, needs to be 0 <= segment_overlap < 1
-    replace_outliers -- bool, whether to replace outliers (likely caused by peak fitting errors on one or more segments) with the median.
-    outlier_method -- which  method to use to detect outliers. Available are the 'interquartile-range' ('iqr') and the 'modified z-score' ('z-score') methods.
-    segment_min_size -- After segmenting the data, a tail end will likely remain that is shorter than the specified segment_size. segment_min_size sets the minimum size for the last segment of the generated series of segments to still be included. 
-    Default = 20.
+    segment_width -- the width of the segment, in seconds, within which all measures 
+                     will be computed.
+    segment_overlap -- the fraction of overlap of adjacent segments, 
+                       needs to be 0 <= segment_overlap < 1
+    replace_outliers -- bool, whether to replace outliers (likely caused by peak fitting
+                        errors on one or more segments) with the median.
+    outlier_method -- which  method to use to detect outliers. Available are the
+                      'interquartile-range' ('iqr') and the 'modified z-score' ('z-score') methods.
+    segment_min_size -- After segmenting the data, a tail end will likely remain that is shorter than the specified
+                        segment_size. segment_min_size sets the minimum size for the last segment of the 
+                        generated series of segments to still be included. Default = 20.
     returns: 'working_data' and 'measures', two keyed dictionary objects with segmented outputs
     '''
 
@@ -835,7 +1134,7 @@ use either \'iqr\' or \'z-score\''
             s_working_data = append_dict(s_working_data, 'peaklist', peaklist)
 
     else:
-        raise ValueError('Mode not understood! Needs to be either \'fast\' or \'full\', passed: %s' %mode)
+        raise ValueError('mode not understood! Needs to be either \'fast\' or \'full\', passed: %s' %mode)
 
     if replace_outliers:
         if outlier_method.lower() == 'iqr':
@@ -848,4 +1147,4 @@ use either \'iqr\' or \'z-score\''
                     s_measures[k] = outliers_iqr_method(s_measures[k])
                 s_measures[k] = outliers_iqr_method(s_measures[k])
 
-return s_working_data, s_measures
+    return s_working_data, s_measures
