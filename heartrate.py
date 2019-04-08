@@ -38,6 +38,19 @@ __all__ = ['window_rms',
 
 #r_dir='/home/.../sound_files'
 
+@function
+def normalise_signal(signal=None,*args,**kwargs):
+    varargin = normalise_signal.varargin
+    nargin = normalise_signal.nargin
+
+    mean_of_signal=mean(signal)
+
+    standard_deviation=std(signal)
+
+    normalised_signal=(signal - mean_of_signal) / standard_deviation
+    
+    normalised_signal=inputSignal 
+
 # Parameters
 
 Fmax         = 10000 #maximum frequency for the sonogram [Hz]
